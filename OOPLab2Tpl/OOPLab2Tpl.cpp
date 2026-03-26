@@ -1,241 +1,171 @@
-﻿#include <iostream>
-#include <vector>
-#include <string>
-#include <bitset>
+#include <iostream>
 #include <fstream>
-#include <windows.h>
-
+#include <string>
+#include <vector>
 using namespace std;
 
-//////////////////////////////////////////////////////////////
-// Enable UTF-8 (for correct text output)
-//////////////////////////////////////////////////////////////
-void initConsole()
-{
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-}
-
-//////////////////////////////////////////////////////////////
-// Structure with bit fields (16 bits total)
-//////////////////////////////////////////////////////////////
-struct BitFields
-{
-    unsigned row : 4;   // row number (0-15)
-    unsigned high : 4;  // high 4 bits of ASCII
-    unsigned p1 : 1;    // parity bit 1
-    unsigned low : 4;   // low 4 bits of ASCII
-    unsigned pos : 2;   // position of character
-    unsigned p2 : 1;    // parity bit 2
-};
-
-//
-union DataWord
-{
-    BitFields bits;
-    unsigned short value;
-};
-
-//////////////////////////////////////////////////////////////
-// Parity function (XOR)
-//////////////////////////////////////////////////////////////
-int parity(unsigned short value, int start, int end)
+int parity(unsigned short x, int l, int r)
 {
     int p = 0;
-
-    for (int i = start; i <= end; i++)
-    {
-        p ^= (value >> i) & 1;
-    }
-
+    for (int i = l; i <= r; i++) p ^= (x >> i) & 1;
     return p;
 }
 
-//////////////////////////////////////////////////////////////
-// 3.1 Input text and save to TEXT file
-//////////////////////////////////////////////////////////////
-vector<string> inputText()
+// ---------------- TASK 1 ----------------
+void task1()
 {
-    vector<string> text(16);
+    int a, b, c, d;
+    cout << "Enter a b c d: ";
+    cin >> a >> b >> c >> d;
 
-    cout << "Enter 16 lines (max 4 characters):\n";
+    int result =
+        ((b << 11) + b) +                                  
+        ((((d << 4) - d) + ((a << 3) + (a << 2))) >> 11) - 
+        ((c << 6) + (c << 5) + (c << 2)) +               
+        ((d << 6) + (d << 5) + (d << 3));                  
 
-    for (int i = 0; i < 16; i++)
-    {
-        cout << "Line " << i << ": ";
-        cin >> text[i];
-
-        if (text[i].length() > 4)
-            text[i] = text[i].substr(0, 4);
-    }
-
-    // save to file
-    ofstream file("text.txt");
-    for (int i = 0; i < 16; i++)
-    {
-        file << text[i] << endl;
-    }
-    file.close();
-
-    cout << "Text saved to file\n";
-
-    return text;
+    cout << "Result = " << result << endl;
 }
 
-//////////////////////////////////////////////////////////////
-// 3.2 Encoding + binary file (using bit fields + union)
-//////////////////////////////////////////////////////////////
-vector<unsigned short> encode(vector<string> text)
+// ---------------- TASK 2 ENCRYPT ----------------
+unsigned short encodeChar(int row, int pos, unsigned char ch)
 {
-    vector<unsigned short> data;
+    unsigned short w = 0;
+    int hi = (ch >> 4) & 15;
+    int lo = ch & 15;
 
-    ofstream file("data.bin", ios::binary);
+    w |= row;          // bits 0-3
+    w |= hi << 4;      // bits 4-7
+    w |= parity(w, 0, 7) << 8;   // bit 8
+    w |= lo << 9;      // bits 9-12
+    w |= pos << 13;    // bits 13-14
+    w |= parity(w, 9, 14) << 15; // bit 15
 
-    for (int row = 0; row < 16; row++)
+    return w;
+}
+
+void encryptText()
+{
+    cin.ignore();
+    ofstream fout("data.bin", ios::binary);
+
+    cout << "Enter 16 lines (up to 4 chars):\n";
+    for (int i = 0; i < 16; i++)
     {
-        for (int pos = 0; pos < 4; pos++)
+        string s;
+        getline(cin, s);
+        while (s.size() < 4) s += ' ';
+        if (s.size() > 4) s = s.substr(0, 4);
+
+        for (int j = 0; j < 4; j++)
         {
-            DataWord word;
-
-            char ch = text[row][pos];
-            int ascii = (int)ch;
-
-            int high = (ascii >> 4) & 0xF;
-            int low = ascii & 0xF;
-
-            // fill structure
-            word.bits.row = row;
-            word.bits.high = high;
-            word.bits.low = low;
-            word.bits.pos = pos;
-
-            // calculate parity bits
-            word.bits.p1 = parity(word.value, 0, 7);
-            word.bits.p2 = parity(word.value, 9, 14);
-
-            // save to vector
-            data.push_back(word.value);
-
-            // write to binary file
-            file.write((char*)&word.value, sizeof(word.value));
-
-            // print result
-            cout << "Row " << row
-                << " Pos " << pos
-                << " -> " << bitset<16>(word.value)
-                << endl;
+            unsigned short w = encodeChar(i, j, s[j]);
+            fout.write((char*)&w, sizeof(w));
         }
     }
 
-    file.close();
-
-    cout << "Encoding finished\n";
-
-    return data;
+    fout.close();
+    cout << "Encrypted to data.bin\n";
 }
 
-//////////////////////////////////////////////////////////////
-// 3.4 Read binary file into vector
-//////////////////////////////////////////////////////////////
-vector<unsigned short> readBinary()
+// ---------------- TASK 3 DECRYPT ----------------
+void decryptText()
 {
-    vector<unsigned short> data;
-
-    ifstream file("data.bin", ios::binary);
-
-    unsigned short word;
-
-    while (file.read((char*)&word, sizeof(word)))
+    ifstream fin("data.bin", ios::binary);
+    if (!fin)
     {
-        data.push_back(word);
+        cout << "File not found\n";
+        return;
     }
 
-    file.close();
+    vector<string> text(16, "    ");
 
-    cout << "\nData from file:\n";
-
-    for (int i = 0; i < data.size(); i++)
+    for (int i = 0; i < 64; i++)
     {
-        cout << bitset<16>(data[i]) << endl;
+        unsigned short w;
+        fin.read((char*)&w, sizeof(w));
+
+        int row = w & 15;
+        int hi = (w >> 4) & 15;
+        int p1 = (w >> 8) & 1;
+        int lo = (w >> 9) & 15;
+        int pos = (w >> 13) & 3;
+        int p2 = (w >> 15) & 1;
+
+        int c1 = parity(w & ~(1 << 8), 0, 7);
+        int c2 = parity(w & ~(1 << 15), 9, 14);
+
+        if (p1 != c1 || p2 != c2)
+            cout << "Parity error in word " << i + 1 << endl;
+
+        char ch = (hi << 4) | lo;
+        text[row][pos] = ch;
     }
 
-    return data;
+    fin.close();
+
+    ofstream fout("decoded.txt");
+    for (int i = 0; i < 16; i++)
+    {
+        cout << text[i] << endl;
+        fout << text[i] << endl;
+    }
+    fout.close();
 }
 
-//////////////////////////////////////////////////////////////
-// 3.3 CRC check
-//////////////////////////////////////////////////////////////
-void checkCRC(vector<unsigned short> data)
+// ---------------- TASK 4 CRC ----------------
+void checkCRC()
 {
-    cout << "\nChecking CRC...\n";
+    int n;
+    cout << "How many words? ";
+    cin >> n;
 
-    for (int i = 0; i < data.size(); i++)
+    for (int k = 0; k < n; k++)
     {
-        unsigned short word = data[i];
+        unsigned short w;
+        cout << "Enter word " << k + 1 << ": ";
+        cin >> w;
 
-        int odd = 0;
-        int even = 0;
-
-        for (int j = 0; j < 14; j++)
+        int odd = 0, even = 0;
+        for (int i = 0; i < 14; i++)
         {
-            if (j % 2 == 0)
-                even ^= (word >> j) & 1;
-            else
-                odd ^= (word >> j) & 1;
+            if (i % 2 == 0) even ^= (w >> i) & 1;
+            else odd ^= (w >> i) & 1;
         }
 
-        int bit14 = (word >> 14) & 1;
-        int bit15 = (word >> 15) & 1;
+        int b14 = (w >> 14) & 1;
+        int b15 = (w >> 15) & 1;
 
-        cout << bitset<16>(word) << " -> ";
-
-        if (bit14 == odd && bit15 == even)
-            cout << "OK\n";
+        if (b14 == odd && b15 == even)
+            cout << "Word " << k + 1 << ": OK\n";
         else
-            cout << "ERROR\n";
+            cout << "Word " << k + 1 << ": ERROR\n";
     }
 }
 
-//////////////////////////////////////////////////////////////
-// MAIN MENU
-//////////////////////////////////////////////////////////////
+// ---------------- MAIN ----------------
 int main()
 {
-    initConsole();
-
-    vector<string> text;
-    vector<unsigned short> data;
-
-    int choice;
-
+    int ch;
     do
     {
-        cout << "\n====== MENU ======\n";
-        cout << "1 - Input text\n";
-        cout << "2 - Encode\n";
-        cout << "3 - Read file\n";
+        cout << "\n1 - Expression\n";
+        cout << "2 - Encrypt text\n";
+        cout << "3 - Decrypt text\n";
         cout << "4 - Check CRC\n";
         cout << "0 - Exit\n";
         cout << "Choice: ";
+        cin >> ch;
 
-        cin >> choice;
+        if (ch == 1) task1();
+        else if (ch == 2) encryptText();
+        else if (ch == 3) decryptText();
+        else if (ch == 4) checkCRC();
 
-        if (choice == 1)
-        {
-            text = inputText();
-        }
-        else if (choice == 2)
-        {
-            data = encode(text);
-        }
-        else if (choice == 3)
-        {
-            data = readBinary();
-        }
-        else if (choice == 4)
-        {
-            checkCRC(data);
-        }
+    } while (ch != 0);
+
+    return 0;
+}
 
     } while (choice != 0);
 
