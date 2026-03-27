@@ -34,7 +34,7 @@ unsigned short encodeChar(int row, int pos, unsigned char ch)
     int hi = (ch >> 4) & 15;
     int lo = ch & 15;
 
-    w |= row;          // bits 0-3
+    w |= row;          // bits 0-3                 0 00 0 000 pr hi0000 0011 
     w |= hi << 4;      // bits 4-7
     w |= parity(w, 0, 7) << 8;   // bit 8
     w |= lo << 9;      // bits 9-12
@@ -86,14 +86,14 @@ void decryptText()
         fin.read((char*)&w, sizeof(w));
 
         int row = w & 15;
-        int hi = (w >> 4) & 15;
+        int hi = (w >> 4) & 15;   //  15 1111
         int p1 = (w >> 8) & 1;
-        int lo = (w >> 9) & 15;
+        int lo = (w >> 9) & 15 ;   //  1010 1111 0100 0101 >>9 0000 0000 0101 0111
         int pos = (w >> 13) & 3;
         int p2 = (w >> 15) & 1;
 
-        int c1 = parity(w & ~(1 << 8), 0, 7);
-        int c2 = parity(w & ~(1 << 15), 9, 14);
+        int c1 = parity(w & ~(1 << 8), 0, 7);   //        0000 0000 0000 0001 <<8  --> 0000 0001 0000 0000  ~ 1111 1110 1111 1111
+        int c2 = parity(w & ~(1 << 15), 9, 14);    //     1010 1111 0100 0101  ---> 1010 1110 
 
         if (p1 != c1 || p2 != c2)
             cout << "Parity error in word " << i + 1 << endl;
